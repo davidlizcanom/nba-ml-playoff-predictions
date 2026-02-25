@@ -1,5 +1,4 @@
-# nba-ml-playoff-predictions
-# 🏀 NBA Playoffs Predictions with Machine Learning & Monte Carlo Simulation
+# NBA Playoffs Predictions with ML & Monte Carlo Simulation
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white" />
@@ -9,38 +8,23 @@
   <img src="https://img.shields.io/badge/License-MIT-lightgrey" />
 </p>
 
-<p align="center">
-  <strong>An end-to-end machine learning pipeline that predicts NBA Playoff outcomes by training an XGBoost model on 10 seasons of historical data and running 10,000 Monte Carlo simulations of the full playoff bracket.</strong>
-</p>
-
-<p align="center">
-  <a href="#-key-results">Key Results</a> •
-  <a href="#-methodology">Methodology</a> •
-  <a href="#-notebooks">Notebooks</a> •
-  <a href="#-how-to-run">How to Run</a> •
-  <a href="#-tech-stack">Tech Stack</a>
-</p>
+Entrené un XGBoost con 10 temporadas de datos históricos de playoffs NBA, lo validé con Leave-One-Season-Out, y corrí 10,000 simulaciones Monte Carlo del bracket completo para generar probabilidades de campeonato. El resultado no es una predicción única sino una distribución: en 10K simulaciones, cuántas veces campeonó cada equipo.
 
 ---
 
-## 📊 Key Results (2025-26 Season)
+## Resultados (temporada 2025-26)
 
-| Rank | Team | Championship % | Finals % | Conf Finals % |
-|------|------|---------------|----------|---------------|
+| Rank | Equipo | Campeonato | Finals | Conf Finals |
+|------|--------|-----------|--------|-------------|
 | 1 | Oklahoma City Thunder | **60.5%** | 63.3% | 88.4% |
 | 2 | Detroit Pistons | **17.1%** | 66.8% | 85.2% |
 | 3 | San Antonio Spurs | **13.2%** | 25.8% | 67.8% |
 | 4 | Denver Nuggets | 3.0% | 9.0% | 31.5% |
 | 5 | New York Knicks | 2.6% | 14.0% | 56.0% |
 
-> **Most likely NBA Finals:** Detroit Pistons vs Oklahoma City Thunder (42.2% of simulations)
+**Finals más probable:** Detroit vs OKC (42.2% de las simulaciones)
 
-### Key Findings
-
-- **Dominant favorite:** OKC at 60.5% — a level of dominance rarely seen in modern NBA playoff predictions.
-- **Detroit paradox:** The Pistons reach the Finals *more often* than OKC (66.8% vs 63.3%) but win the championship far less — they dominate the East but can't overcome OKC.
-- **Most predictive feature:** Effective Field Goal Percentage (eFG%) — not points scored, not defensive rating. In playoffs, shooting efficiency is king.
-- **First round upset to watch:** Los Angeles Lakers over Houston Rockets (43.1%) — the Lakers have the worst Net Rating of all playoff teams but the highest clutch factor in the league (90%).
+Lo interesante: Detroit llega a Finals más seguido que OKC (66.8% vs 63.3%) pero gana el campeonato mucho menos — dominan el Este pero no pueden con OKC. El feature más predictivo resultó ser el eFG% (eficiencia de tiro), no puntos ni defensa. Y el upset más frecuente en primera ronda es Lakers sobre Houston (43.1%): peor Net Rating de todos los equipos de playoffs pero el clutch factor más alto de la liga (90%).
 
 <p align="center">
   <img src="outputs/championship_distribution.png" width="700" alt="Championship probability distribution" />
@@ -48,117 +32,105 @@
 
 ---
 
-## 🔬 Methodology
+## Metodología
 
-### Pipeline Overview
+### Pipeline
 
 ```
 Data Collection → Feature Engineering → Model Training → Validation → Monte Carlo Simulation
      (NB01)           (NB02)              (NB03)          (NB03)          (NB04)
 ```
 
-### 1. Data Collection
-- **Source:** Official NBA statistics via [`nba_api`](https://github.com/swar/nba_api)
-- **Current season:** Team stats, game logs, standings (2025-26)
-- **Historical:** 10 seasons of playoff results, team stats, and standings (2015-16 to 2024-25)
+### Data collection
 
-### 2. Feature Engineering
-Features are computed as **differentials** (Team A − Team B), where Team A is always the higher seed:
+Toda la data viene de la API oficial de la NBA (`nba_api`). Recolecté stats avanzadas, game logs y standings de la temporada actual (2025-26) más 10 temporadas históricas de playoffs (2015-16 a 2024-25).
 
-| Feature | Description |
-|---------|-------------|
-| `EFG_PCT_diff` | Effective Field Goal % differential |
-| `W_PCT_diff` | Win percentage differential |
-| `TS_PCT_diff` | True Shooting % differential |
-| `PIE_diff` | Player Impact Estimate differential |
-| `seed_diff` | Playoff seed differential |
+### Feature engineering
 
-**Design decisions:**
-- Differentials (not absolutes) → model learns "better *than opponent*"
-- Team A = better seed → standardizes perspective
-- Inverted sign for defensive stats → positive always means "Team A is better"
-- Feature selection reduced from 14 to 5 → with ~150 training samples, fewer features = better generalization
+Los features son **diferenciales** (equipo A - equipo B), donde A siempre es el mejor seed. Al modelo no le importa si un equipo tiene eFG% de 53%, le importa si es *mejor que su rival*.
 
-### 3. Model: XGBoost
+| Feature | Qué mide |
+|---------|----------|
+| `EFG_PCT_diff` | Diferencial de eficiencia de tiro |
+| `W_PCT_diff` | Diferencial de % de victorias |
+| `TS_PCT_diff` | Diferencial de True Shooting |
+| `PIE_diff` | Diferencial de Player Impact Estimate |
+| `seed_diff` | Diferencial de seed |
+
+Empecé con 14 features pero con ~150 series de entrenamiento es demasiado. Hice feature selection con correlación + mutual information y probé de 2 a 10 features validando con LOSO. Me quedé con 5. Para stats donde menor es mejor (DEF_RATING, turnovers) invertí el signo para que positivo siempre signifique "A es mejor".
+
+### Modelo: XGBoost
 
 ```python
 XGBClassifier(
-    n_estimators=50, max_depth=2,        # Shallow trees → less overfitting
+    n_estimators=50, max_depth=2,        # arboles superficiales
     learning_rate=0.05, subsample=0.7,
-    reg_alpha=2.0, reg_lambda=3.0,       # Strong L1 + L2 regularization
-    min_child_weight=5, gamma=0.5        # Conservative splitting
+    reg_alpha=2.0, reg_lambda=3.0,       # regularizacion fuerte L1 + L2
+    min_child_weight=5, gamma=0.5        # conservador al hacer splits
 )
 ```
 
-**Aggressively regularized** for a small dataset (~150 series). Priority: reliable probabilities over maximum accuracy.
+Hiperparámetros bastante conservadores para un dataset chico. La prioridad es que las probabilidades sean confiables, no maximizar accuracy.
 
-### 4. Validation: Leave-One-Season-Out (LOSO)
+### Validación: Leave-One-Season-Out
 
-Train on 9 seasons, predict the remaining one. Repeat for each season. This simulates the real scenario of predicting future playoffs.
+Entreno con 9 temporadas, predigo la que queda afuera. Repito para cada una. Es la forma más honesta de validar porque simula el escenario real de predecir playoffs futuros.
 
-| Metric | Value |
-|--------|-------|
-| **OOF Accuracy** | 0.707 (matches historical baseline) |
-| **Brier Score** | 0.1845 (< 0.20 = well-calibrated) |
-| **ROC AUC** | 0.714 |
-| **Probability range** | 0.446 – 0.885 (good discrimination) |
+| Métrica | Valor |
+|---------|-------|
+| OOF Accuracy | 0.707 |
+| Brier Score | 0.1845 |
+| ROC AUC | 0.714 |
+| Rango de probabilidades | 0.446 – 0.885 |
 
-> **Why Brier Score matters more than accuracy here:** Monte Carlo simulation needs *calibrated probabilities*, not just binary predictions. A model that says "65% for Team A" must mean Team A wins ~65% of the time in similar situations.
+El Brier Score importa más que la accuracy acá. La simulación Monte Carlo necesita probabilidades calibradas: cuando el modelo dice "65% para A", tiene que significar que A gana ~65% de las veces en situaciones similares. Un modelo que siempre dice "favorito gana al 100%" tiene buena accuracy pero probabilidades inútiles para simular.
 
 <p align="center">
   <img src="outputs/feature_importance.png" width="600" alt="Feature importance" />
 </p>
 
-### 5. Monte Carlo Simulation
+### Simulación Monte Carlo
 
-- **10,000 full bracket simulations** (16 teams, 4 rounds per conference + Finals)
-- Each series: **Best-of-7**, simulated game by game
-- **Home court advantage:** +3% per game for the higher seed (2-2-1-1-1 format)
-- **Probability clipping:** 5%–95% (no certainties in playoffs)
-- Pre-cached matchup probabilities for efficiency
+10,000 simulaciones del bracket completo (16 equipos, 4 rondas por conferencia + Finals). Cada serie es Bo7, simulada juego por juego con home court advantage (+3% para el mejor seed, formato 2-2-1-1-1). Las probabilidades se clipean entre 5% y 95% porque en playoffs no hay nada seguro. Pre-calculé todas las probabilidades de matchup posibles para que la simulación corra rápido.
 
 ---
 
-## 📓 Notebooks
+## Notebooks
 
-The project is organized in 4 sequential notebooks designed to run in **Google Colab**:
+4 notebooks secuenciales para Google Colab:
 
-| # | Notebook | Description |
-|---|----------|-------------|
-| 01 | [`01_data_collection.ipynb`](notebooks/01_data_collection.ipynb) | Collects current season stats and 10 years of historical playoff data via `nba_api`. Saves to Google Drive. |
-| 02 | [`02_feature_engineering.ipynb`](notebooks/02_feature_engineering.ipynb) | Builds training dataset with differential features. EDA, correlation analysis, and current season team profiles. |
-| 03 | [`03_model_calibration.ipynb`](notebooks/03_model_calibration.ipynb) | Feature selection, XGBoost training, LOSO validation, calibration analysis, and historical backtest. |
-| 04 | [`04_simulation_and_viz.ipynb`](notebooks/04_simulation_and_viz.ipynb) | 10,000 Monte Carlo simulations, championship probabilities, bracket visualization, and insights. |
+| # | Notebook | Qué hace |
+|---|----------|----------|
+| 01 | [`01_data_collection.ipynb`](notebooks/01_data_collection.ipynb) | Recolecta stats actuales y 10 años de datos históricos via `nba_api`. Guarda en Drive. |
+| 02 | [`02_feature_engineering.ipynb`](notebooks/02_feature_engineering.ipynb) | Arma el training set con diferenciales. EDA, correlaciones, perfiles de equipos actuales. |
+| 03 | [`03_model_calibration.ipynb`](notebooks/03_model_calibration.ipynb) | Feature selection, entrena XGBoost, validación LOSO, calibración, backtest histórico. |
+| 04 | [`04_simulation_and_viz.ipynb`](notebooks/04_simulation_and_viz.ipynb) | 10K simulaciones Monte Carlo, probabilidades, visualizaciones para el video. |
 
-### Data Flow
+### Flujo de datos
 
 ```
-NB01 → Google Drive (data/)
+NB01 → Drive (data/)
          ↓
-NB02 → Google Drive (data/ + team_profiles)
+NB02 → Drive (data/ + team_profiles)
          ↓
-NB03 → Google Drive (models/ + metrics)
+NB03 → Drive (models/ + metrics)
          ↓
-NB04 → Google Drive (outputs/ + visualizations)
+NB04 → Drive (outputs/ + visualizaciones)
 ```
 
 ---
 
-## 🚀 How to Run
+## Cómo correrlo
 
-### Prerequisites
-- Google account (for Colab + Drive)
-- No local installation needed
+Solo necesitas una cuenta de Google (para Colab + Drive).
 
-### Steps
+1. Clona o descarga el repo
+2. Sube los 4 notebooks a [Google Colab](https://colab.research.google.com/)
+3. Corre en orden: NB01 → NB02 → NB03 → NB04
+4. Cada notebook monta Drive y guarda en `MyDrive/nba-playoffs-simulator/`
+5. Después de NB01, los siguientes leen de Drive — no hay que re-correr NB01 a menos que quieras actualizar los datos
 
-1. **Clone or download** this repository
-2. **Upload the 4 notebooks** to [Google Colab](https://colab.research.google.com/)
-3. **Run in order:** NB01 → NB02 → NB03 → NB04
-4. Each notebook mounts Google Drive and saves outputs to `MyDrive/nba-playoffs-simulator/`
-5. After NB01, subsequent notebooks read data from Drive — no need to re-run NB01 unless updating source data
-
-### Requirements
+### Dependencias
 
 ```
 nba_api>=1.4
@@ -170,26 +142,26 @@ seaborn>=0.12
 scikit-learn>=1.2
 ```
 
-> All dependencies are installed automatically in the first cell of each notebook via `!pip install`.
+Se instalan automáticamente en la primera celda de cada notebook.
 
 ---
 
-## 🛠️ Tech Stack
+## Tech stack
 
-| Component | Technology |
+| Componente | Tecnología |
 |-----------|-----------|
-| **Language** | Python 3.10+ |
-| **ML Model** | XGBoost (gradient boosting) |
-| **Simulation** | Monte Carlo (NumPy) |
-| **Data Source** | nba_api (official NBA stats) |
-| **Validation** | Leave-One-Season-Out CV (scikit-learn) |
-| **Visualization** | Matplotlib, Seaborn |
-| **Platform** | Google Colab |
-| **Storage** | Google Drive |
+| Lenguaje | Python 3.10+ |
+| Modelo | XGBoost |
+| Simulación | Monte Carlo (NumPy) |
+| Datos | nba_api (stats oficiales NBA) |
+| Validación | Leave-One-Season-Out CV (scikit-learn) |
+| Visualización | Matplotlib, Seaborn |
+| Plataforma | Google Colab |
+| Storage | Google Drive |
 
 ---
 
-## 📁 Repository Structure
+## Estructura del repo
 
 ```
 nba-ml-playoff-predictions/
@@ -215,47 +187,39 @@ nba-ml-playoff-predictions/
 
 ---
 
-## 📈 Historical Validation (Backtest)
+## Backtest histórico
 
-The model was backtested on the last 3 completed seasons. For each, the model was trained *excluding* that season and then ran 5,000 simulations:
+Backtesté el modelo con las últimas 3 temporadas completadas. Para cada una, entrené excluyendo esa temporada y corrí 5,000 simulaciones:
 
-| Season | Actual Champion | Model's Top 5? |
-|--------|----------------|-----------------|
-| 2022-23 | Denver Nuggets | ✅ |
-| 2023-24 | Boston Celtics | ✅ |
-| 2024-25 | — | ✅ |
-
----
-
-## 💡 Limitations & Future Work
-
-### Limitations
-- **Regular season stats only** — the model doesn't capture "playoff DNA" (player experience, coaching adjustments). Roster changes between seasons make historical playoff performance unreliable as a feature.
-- **Small training set** (~150 series) — limits model complexity. Feature selection was critical to avoid overfitting.
-- **No player-level data** — injuries, trades, and lineup changes during the season aren't modeled.
-
-### Future Work
-- Incorporate player-level features (injury-adjusted metrics)
-- Add Elo-style momentum features from recent games
-- Bayesian calibration for better probability estimates
-- Web app for interactive bracket exploration
+| Temporada | Campeón real | En el Top 5 del modelo? |
+|-----------|-------------|------------------------|
+| 2022-23 | Denver Nuggets | Sí |
+| 2023-24 | Boston Celtics | Sí |
+| 2024-25 | — | Sí |
 
 ---
 
-## 👤 Author
+## Limitaciones y trabajo futuro
 
-**David** — Data Analytics Master's Student | [LinkedIn](https://linkedin.com/in/YOUR-PROFILE) | [TikTok](https://tiktok.com/@YOUR-HANDLE)
+**Limitaciones:**
+- Solo usa stats de temporada regular — no captura "playoff DNA" (experiencia, ajustes de coaching). Cambios de roster entre temporadas hacen que el rendimiento histórico de playoffs no sea confiable como feature.
+- Training set chico (~150 series) — limita la complejidad del modelo. El feature selection fue clave para no caer en overfitting.
+- No hay datos a nivel jugador — lesiones, trades y cambios de lineup no están modelados.
 
-Built as part of a data science content strategy combining technical analysis with sports analytics.
+**A futuro:**
+- Incorporar features a nivel jugador (métricas ajustadas por lesiones)
+- Agregar momentum tipo Elo con resultados recientes
+- Calibración bayesiana para mejores estimaciones de probabilidad
+- Web app para explorar el bracket interactivamente
 
 ---
 
-## 📄 License
+## Autor
 
-This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
+**David** — Maestría en Data Analytics | [LinkedIn](https://linkedin.com/in/YOUR-PROFILE) | [TikTok](https://tiktok.com/@YOUR-HANDLE)
 
 ---
 
-<p align="center">
-  <i>If you found this useful, give it a ⭐ and share your team's chances in the Issues tab!</i>
-</p>
+## Licencia
+
+MIT — ver [LICENSE](LICENSE).
